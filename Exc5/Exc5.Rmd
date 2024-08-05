@@ -1,0 +1,69 @@
+---
+title: "Exc5"
+author: "Henrik Sausen"
+date: "2023-05-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Problem 4 Bootstrap 
+
+```{r}
+library(car)
+library(boot)
+
+SLID <- na.omit(SLID)
+n <- dim(SLID)[1]
+SLID.lm <- lm(wages ~ ., data = SLID)
+
+beta.boot <-function(data, index) { #standard way of function to use in bootstrapping, index is the samples to be taken
+  lm.temp <- lm(wages ~., data = SLID, subset = index ) #chooses a subset with the random samples 
+  return(lm.temp$coef)
+}
+
+
+B = 1000
+beta.hat <- c()
+
+#Bootstrap using for-loop, coefficient estimate of age 
+for (b in 1:B) {
+  index = sample(nrow(SLID), nrow(SLID), replace = T) #here we choose #rows samples from the #nrows in SLID. These are the   indicies that we are going to use. Here, some will appear more than once. 
+  beta.hat[b] <- beta.boot(SLID, index)["age"]
+}
+
+library(ggplot2)
+beta.data <- data.frame(beta.hat = beta.hat, norm_den = dnorm(beta.hat, mean(beta.hat), sd(beta.hat))) #dnorm: pdf of normal distribution for beta.hat with the corresponding mean and variance. norm_den = normal density 
+
+ggplot(beta.data) + 
+  geom_histogram(aes(x = beta.hat, y = ..density..), fill = 'gray', color = 'black') + 
+  geom_line(aes(x = beta.hat, y = norm_den)) + 
+  theme_minimal()
+```
+
+
+```{r}
+#Bootstrap using boot()
+beta.boot.fn <- boot(data = SLID, statistic = beta.boot, R = 1000) 
+beta.boot.fn
+```
+
+
+
+Compare results to: 
+```{r}
+summary(SLID.lm)$coeff["age", ]
+sd(beta.hat) #our standard deviation of beta-hat 
+```
+
+
+```{r}
+confint(SLID.lm)
+```
+
+
+
+
+

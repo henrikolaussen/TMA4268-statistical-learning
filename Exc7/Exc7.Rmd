@@ -1,0 +1,140 @@
+---
+title: "Exc7"
+author: "Henrik Sausen"
+date: "2023-05-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+#Problem 1
+
+Use ploynomials to fit the model of degree 1,2,3,4
+
+```{r}
+library(ISLR)
+# extract only the two variables from Auto
+ds = Auto[c("horsepower", "mpg")]
+n = nrow(ds)
+# which degrees we will look at
+deg = 1:4
+set.seed(1)
+# training ids for training set
+tr = sample.int(n, n/2)
+# plot of training data
+plot(ds[tr, ], col = "darkgrey", main = "Polynomial regression")
+
+#polynomials using the training set
+mse_pred = c()
+co = rainbow(length(deg))
+for (d in 1:4) {
+  poly_temp <- lm(mpg ~ poly(horsepower, d), data = ds[tr,])
+  poly_temp$mpg
+  
+  lines(cbind(ds[tr, ]$horsepower, poly_temp$fit)[order(ds[tr, ]$horsepower),], col = co[d])
+  #test error
+  poly_pred <- predict(poly_temp, newdata = ds[-tr,])
+  mse_pred[d] <- mean((ds$mpg[-tr] - poly_pred)^2)
+  
+}
+
+#add legend to see which color corresponds to which line
+legend("topright", legend = paste("d =",deg), lty = 1, col = co)
+
+```
+```{r}
+plot(mse_pred, type = 'b', xlab = 'Degree')
+```
+#Problem 2
+
+Predict mpg by origin 
+```{r}
+library(ggplot2)
+library(GGally)
+
+attach(Auto)
+
+data2 <- Auto[c("mpg", "origin")]
+
+data2.lm <- lm(mpg ~ factor(origin), data = data2[tr,])
+
+new = data.frame(origin = as.factor(sort(unique(data2$origin)))) #does it like this because the prediction function will give the same prediction for all the origins. Hence, we only need 1,2,3 on the x-axis.
+
+data2_pred <- predict(data2.lm, newdata = new, se = T) #se=T gives standard errors
+data_frame <- data.frame(origin = new, mpg = data2_pred$fit, lwr =  data2_pred$fit - 1.96 *data2_pred$se.fit, upr = data2_pred$fit + 1.96 *data2_pred$se.fit)
+
+ggplot(data_frame, aes(x = origin, y = mpg)) + 
+  geom_segment(aes(x=origin, y=lwr, xend = origin, yend=upr)) +
+  geom_point()
+              
+```
+
+
+#Problem 4 
+
+```{r}
+# install.packages('gam')
+library(gam)
+library(ISLR)
+attach(Wage)
+
+
+
+# X_1
+mybs = function(x, knots) {
+    cbind(x, x^2, x^3, sapply(knots, function(y) pmax(0, x - y)^3))
+}
+
+d = function(c, cK, x) (pmax(0, x - c)^3 - pmax(0, x - cK)^3)/(cK - c)
+# X_2
+myns = function(x, knots) {
+    kn = c(min(x), knots, max(x))
+    K = length(kn)
+    sub = d(kn[K - 1], kn[K], x)
+    cbind(x, sapply(kn[1:(K - 2)], d, kn[K], x) - sub)
+}
+# X_3
+myfactor = function(x) model.matrix(~x)[, -1]
+
+
+X = cbind(1, mybs(age, c(40,60)), myns(year, 2006), myfactor(education))
+
+# fitted model with our X
+myhat = lm(wage ~ X - 1)$fit
+# fitted model with gam
+yhat = gam(wage ~ bs(age, knots = c(40, 60)) + ns(year, knots = 2006) + education)$fit
+# are they equal?
+all.equal(myhat, yhat) #yes they are equal 
+```
+
+```{r}
+X_gam <- model.matrix(~ bs(age,knots=c(40,60)) + ns(year,knots=2006) + education) 
+```
+
+
+#Problem 5
+
+Use the gam-function to fit the Auto dataset
+
+```{r}
+attach(Auto)
+
+Auto$origin <- factor(Auto$origin) #must be interpreted as a factor 
+X_model <- model.matrix(~ bs(displacement, knots=290) + poly(horsepower,2) + poly(weight,1) + s(acceleration, df=3) + origin)
+
+gamobject <- gam(mpg ~ bs(displacement, knots=290) + poly(horsepower,2) + poly(weight,1) + s(acceleration, df=3) + origin, data = Auto)
+
+par(mfrow=c(2,3))
+plot(gamobject,se=TRUE,col="blue")
+```
+
+
+The lines we see are the confidence intervals. 
+```{r}
+summary(gamobject)
+```
+

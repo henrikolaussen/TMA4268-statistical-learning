@@ -1,0 +1,230 @@
+---
+title: "Exc9"
+author: "Henrik Sausen"
+date: "2023-05-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Problem 3
+```{r}
+set.seed(10111)
+x <- matrix(rnorm(40), 20, 2)
+y <- rep(c(-1, 1), c(10, 10))
+x[y == 1, ] <- x[y == 1, ] + 1
+dat <- data.frame(x, y = as.factor(y))
+plot(x, col = y + 3, pch = 19, xlab = expression(X[1]), ylab = expression(X[2]))
+```
+a) 
+
+```{r}
+library(e1071)
+svmfit <- svm(y ~ ., data = dat, kernel = "linear", cost = 10, scale = F)
+```
+
+
+```{r}
+make.grid <- function(x, n = 75) {
+  # takes as input the data matrix x
+  # and number of grid points n in each direction
+  # the default value will generate a 75x75 grid
+  grange <- apply(x, 2, range) # range for x1 and x2
+  # Sequence from the lowest to the upper value of x1
+  x1 <- seq(from = grange[1, 1], to = grange[2, 1], length.out = n)
+  # Sequence from the lowest to the upper value of x2
+  x2 <- seq(from = grange[1, 2], to = grange[2, 2], length.out = n)
+  # Create a uniform grid according to x1 and x2 values
+  expand.grid(X1 = x1, X2 = x2)
+}
+```
+
+
+```{r}
+x <- as.matrix(dat[, c('X1', 'X2')])
+
+xgrid <-make.grid(x)
+ygrid <- predict(svmfit, newdata = xgrid)
+plot(xgrid, col = c("red", "blue")[as.numeric(ygrid)], pch = 20, cex = 0.5)
+```
+
+Plot the training set and the support vectors in the same plot
+```{r}
+plot(xgrid, col = c("red", "blue")[as.numeric(ygrid)], pch = 20, cex = 0.5)
+points(x, col = y + 3, pch = 19) #training 
+points(x[svmfit$index,], pch = 5, cex = 2) 
+```
+
+c) 
+Calculate beta_1, beta_2: 
+```{r}
+beta0 <- svmfit$rho
+beta <- t(svmfit$coefs) %*% x[svmfit$index,]
+```
+
+
+
+#Problem 4
+
+```{r}
+load(url("https://web.stanford.edu/~hastie/ElemStatLearn/datasets/ESL.mixture.rda"))
+#names(ESL.mixture)
+rm(x, y)
+attach(ESL.mixture)
+plot(x, col = y + 1, pch = 19, xlab = expression(X[1]), ylab = expression(X[2]))
+```
+```{r}
+dat <- data.frame(y = factor(y), x)
+```
+
+CV:
+```{r}
+r.cv <- tune(svm,
+             factor(y) ~ .,
+             data = dat,
+             kernel = "radial",
+             ranges = list(cost = c(0.001,0.01,0.1,1,5,10,100, 1000), gamma = c(0.01, 0.1, 1, 10, 100)))
+
+
+bestmod <- r.cv$best.model
+summary(r.cv)
+```
+
+Plotting: 
+```{r}
+xgrid <- make.grid(x)
+ygrid <- predict(bestmod, xgrid)
+plot(xgrid, col = as.numeric(ygrid), pch = 20, cex = 0.2)
+points(x, col = y + 1, pch = 19)
+
+# decision boundary
+func <- predict(bestmod, xgrid, decision.values = TRUE)
+func <- attributes(func)$decision
+contour(unique(xgrid[, 1]),
+        unique(xgrid[, 2]),
+        matrix(func, 75, 75),
+        level = 0,
+        add = TRUE) #svm boundary
+```
+
+#Problem 5
+```{r}
+library(ISLR)
+
+set.seed(4268)
+train <- sample(1:nrow(OJ), 800, replace = F)
+
+
+oj.train <- OJ[train, ]
+oj.test <- OJ[-train,]
+```
+
+Using svm with cost = 0.01
+```{r}
+oj.svm <- svm(Purchase ~., data = oj.train, cost = 0.01, kernel = "linear")
+summary(oj.svm)
+```
+We have here 442 support vectors, whereas 222 belongs to CH, and 220 to M.
+
+c) training and test error rates. 
+
+```{r}
+#training error rates 
+#train.pred <- predict(oj.svm, oj.train) #-> fra fasit...???
+train.table <- table(oj.svm$fitted, oj.train$Purchase)
+train.error <- 1- sum(diag(train.table))/sum(train.table)
+
+#test error rate
+svm.predict <- predict(oj.svm, newdata = oj.test)
+test.table <- table(svm.predict, oj.test$Purchase)
+test.error <- 1-sum(diag(test.table))/sum(test.table)
+
+train.error
+test.error
+```
+
+Select best cost
+```{r}
+set.seed(4268)
+cost.val <- 10^seq(-2, 1, by = 0.25)
+
+cost.val
+cv.svm <- tune(svm, Purchase ~., data = oj.train, kernel = 'linear', ranges = list(cost = cost.val))
+bestmod <- cv.svm$best.model
+
+bestmod
+```
+
+e) new training and test error rates using the new cost-value.
+
+```{r}
+set.seed(4268)
+#training error rates 
+#cv.train.pred <- predict(bestmod, oj.train) #-> fra fasit...???
+cv.train.table <- table(predict = bestmod$fitted, oj.train$Purchase)
+cv.train.error <- 1- sum(diag(cv.train.table))/sum(cv.train.table)
+
+#test error rate
+cv.svm.predict <- predict(bestmod, newdata = oj.test)
+cv.test.table <- table(predict = cv.svm.predict, truth = oj.test$Purchase)
+cv.test.error <- 1-sum(diag(cv.test.table))/sum(cv.test.table)
+
+cv.train.error
+cv.test.error
+```
+
+
+f) now using radial kernel
+```{r}
+radial.svm <- svm(Purchase ~., data = oj.train, kernel = 'radial')
+summary(radial.svm)
+```
+
+Test/train error:
+```{r}
+#train
+radial.train.table <- table(predict = radial.svm$fitted, truth = oj.train$Purchase)
+train.radial.error <- 1 - sum(diag(radial.train.table)) / sum(radial.train.table)
+
+#test
+radial.pred <- predict(radial.svm, newdata = oj.test)
+
+rad.test.table <- table(predict = radial.pred, oj.test$Purchase)
+test.radial.error <- 1 - sum(diag(rad.test.table)) / sum(rad.test.table)
+
+train.radial.error
+test.radial.error
+
+```
+
+Optimal cost and gamma: 
+```{r}
+set.seed(4268)
+cv.rad <- tune(svm, Purchase ~., data = oj.train, kernel = 'radial', range = list(cost = cost.val))
+rad.bestmod <- cv.rad$best.model
+
+#train
+cv.radial.train.table <- table(predict = rad.bestmod$fitted, truth = oj.train$Purchase)
+cv.train.radial.error <- 1 - sum(diag(cv.radial.train.table)) / sum(cv.radial.train.table)
+
+#test
+cv.radial.pred <- predict(rad.bestmod, newdata = oj.test)
+
+cv.rad.test.table <- table(predict = cv.radial.pred, oj.test$Purchase)
+cv.test.radial.error <- 1 - sum(diag(cv.rad.test.table)) / sum(cv.rad.test.table)
+
+cv.train.radial.error
+cv.test.radial.error
+```
+
+```{r}
+plot(rad.bestmod)
+```
+
+
+
+
+
+

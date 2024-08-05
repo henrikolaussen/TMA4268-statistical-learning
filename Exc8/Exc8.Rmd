@@ -1,0 +1,329 @@
+---
+title: "Exc8"
+author: "Henrik Sausen"
+date: "2023-05-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Problem 1
+a) Difference in fitting a regression tree and a classification tree. When we fit a regression tree, we divide our space into non-overlapping regions, whereas each region corresponds to a prediction. For each split of our regions, we choose the split that minimises the RSS the most. This is done until we reach a stopping criterion. When we do prediction of a new observation x0, we find the right terminal node, and gives this observation the same predictive value as the average of the observations in this terminal node. Normally, we would start with a tree that is very large. The next step is then to prune the tree with respect to minimisation of the RSS + 'penalisation term'(that decides how large our pruned tree becomes). A large alpha, will give shorter trees, whereas smaller alpha will give trees that tend towards the unpruned tree. 
+
+The selection of alpha is done in the following way: 
+For each fold k of the K-fold CV, we: 
+1) We use all folds except the kth fold to: Split our tree such that we reduces RSS the most. Then apply the cost complexity pruning. Each value of alpha corresponds to a subtree of the un-pruned tree, that makes the cost complexity function as small as possible. When we increase alpha, we prune the tree more and more. Here we vary alpha in order to obtain trees for the next step.
+2) We then calculate the (cross-validated MSE) mean square prediction error on the data in the left out kth fold (the validation set). This is done as a function of alpha. 
+Then we average the results for each value of alpha, and chooses the alpha that minimises the average error the most. 
+Now we are finished. The chosen alpha is then used to prune the tree. 
+
+On the other side, we use the Gini index instead of the RSS in classification. In classification, a new observation x0 is predicted to belong the most commonly occuring class (of the training observations) in that respective terminal node. We are also interested in the class proportions among the training observations that fall into this respective region (terminal node) - meaning the proportion of observations in each class in this terminal node.
+Hence we need a measure of node-purity. Gini index is an example of this. If the Gini-index is small, than that terminal node containts nearly only one class. 
+
+b) Advantage and disadvantage of trees: 
+A: Trees are easy to interpret (small trees). They can be used with both categorical and continous variables without producing dummy variables. Lastly, they can be displayed graphically. 
+
+D: Trees have a high variance, meaning that two different random samples from the same dataset might produce very different trees. Generally not a good predictive rate. Hard to interprete large trees.
+
+c) Idea of bagging is: We take several bootstrap samples from our data, and average over the outcome such that we reduce the variance in the data. However, if we have some strong predictors that most boostrap samples use as root, then the trees will be very similar. Hence, when we average, the reduction in variance is not as large as we wish, because the trees are highly correlated. The idea of random forests improve this, because they only make m of the p predictors available at each split, such that the trees are not as correlated. We then average over the result.
+
+d) Out-of-bag error estimate (OOB error estimate). When we choose our bootstrapped datasets, every observation i will be included in approximately 2/3 of the B data sets. Hence, we have B/3 bootstrap sets where observation i is not chosen. Hence we can make B/3 prediction of this observation i. Moreover, if we deal with a regression tree, we can average over the prediction of observation i in order to obtain a solid prediction for this observation. On the other hand, if we deal with classification, we can use the majority vote of the B/3 predictions in order to predict the response of observation i. We call this OOB prediction. This procedure can be done for all n observations, hence we can obtain an overall OOB MSE (regression) or classification error (classification). This is a valid approach since we have a testset that is not contained in the training set, used to fit the tree (2/3 * B in size).
+
+
+e) One can evaluate the importance of a single predictor in bagging and random forests by using variable importance plots. There are two ways to obtain these results. The first way is to average the reduction in RSS (or Gini index) given by splits over a single predictor in all bagged trees. The other way uses the OOB samples to quantify the trees predictive performance. For one predictor at a time, we change the jth observation x_j (each column in design matrix belong to a predictorn), and look for significant decrease in predictive performance. If the decrease is significant, then we have that the predictor j is important to the model. 
+
+#Problem 2 
+
+a)/b)
+```{r}
+library(ISLR)
+library(tree)
+
+#training/test sets 
+set.seed(4268)
+n = nrow(Carseats)
+train = sample(1:n, 0.7*n, replace = F)
+test = - train
+Carseats.train = Carseats[train,]
+Carseats.test = Carseats[-train,]
+
+tree.mod = tree(Sales~., data = Carseats.train)
+
+#plotting of the tree. 
+plot(tree.mod)
+text(tree.mod, pretty = 0)
+```
+Prediction
+```{r}
+tree.pred <- predict(tree.mod, newdata = Carseats.test)
+
+test_MSE <- mean((tree.pred - Carseats.test$Sales)^2)
+
+test_MSE
+```
+ 
+c) 
+Pruning of the tree, want optimal tree complexity. Use CV to do this
+```{r}
+set.seed(4268)
+cv.Carseats  = cv.tree(tree.mod) 
+
+tree.min =  which.min(cv.Carseats$dev) #tree with least deviance
+
+best = cv.Carseats$size[tree.min] 
+best
+```
+
+Plot the deviance as a function of size 
+```{r}
+plot(cv.Carseats$size, cv.Carseats$dev, type = 'b')
+points(cv.Carseats$size[tree.min], cv.Carseats$dev[tree.min], col = 'red') 
+```
+We see that the deviance is almost the same for the tree of size 11 as for 16. We want the tree as simple as possible. 
+
+```{r}
+tree.mod.pruned <- prune.tree(tree.mod, best = 11)
+
+#best corresponds to number of terminal nodes/leafes. 
+
+plot(tree.mod.pruned)
+text(tree.mod.pruned, pretty = 0)
+```
+
+
+
+```{r}
+pruned.predict <- predict(tree.mod.pruned, newdata = Carseats.test)
+pruned.mse <- mean((pruned.predict - Carseats.test$Sales)^2)
+pruned.mse
+```
+
+The mse is better now than before, with best = 11. 
+
+
+d) Use bagging-approach with 500 trees to analyze the data.
+
+```{r}
+library(randomForest)
+set.seed(4268)
+dim(Carseats)
+
+bag.Carseats = randomForest(Sales~., data = Carseats.train , ntree = 500, importance = TRUE, mtry = ncol(Carseats)-1)
+
+bag.pred <- predict(bag.Carseats, newdata = Carseats.test)
+
+bag.mse <- mean((bag.pred - Carseats.test$Sales)^2)
+bag.mse
+```
+This is a significant decrease in the test-mse.
+
+
+```{r}
+importance(bag.Carseats)
+```
+
+Here, we deal with a regression tree, such that the node impurity is measured by the RSS. The second column is the decrease in node impurity for splits over this predictor, averaged over all the bagged trees. The first column is the OOB-approach; mean decrease of accuracy on the OOB samples when one of the samples in the training set is permuted. Plot importance of variables: 
+
+```{r}
+varImpPlot(bag.Carseats)
+```
+
+e) Here we use the random forests approach, in order to reduce the correlation between the trees in the bagging approach. We are going to use m = 3 variables in each split.
+
+```{r}
+set.seed(4268)
+rf.Carseats = randomForest(Sales~., data = Carseats.train , mtry = 3, ntree = 500, importance = TRUE)
+rf.pred <- predict(rf.Carseats, newdata = Carseats.test)
+
+rf.mse <- mean((rf.pred - Carseats.test$Sales)^2)
+rf.mse
+```
+
+Here the effect of choosing a m<p is that we decorrelate the trees, such that when we average over all the trees, we get a more significant decrease in variance. That is one of the main goals of random forests and bagging; reducing the variance in the trees, such that our result is more polite. Trees has in general high variance, meaning that we might get very different trees for slightly different datasets. Hence we want to decrease this variance. The predicted value we obtain, is the average value of prediction over all the trees in the random forest. 
+
+```{r}
+varImpPlot(rf.Carseats)
+```
+
+We see that we still obtain the same two important variables Price and ShelveLoc, as before. 
+
+f) Now we use boosting with 500 trees. Boosting is a method that learns slowly. 
+
+```{r}
+library(gbm)
+
+set.seed(4268)
+r.boost=gbm(Sales~., Carseats.train, distribution= "gaussian",
+                 n.trees= 500 ,interaction.depth= 4, shrinkage = 0.1)
+
+boost.pred <- predict(r.boost, newdata = Carseats.test, n.trees = 500)
+
+boost.mse <- mean((boost.pred - Carseats.test$Sales)^2)
+
+boost.mse
+```
+This is the best error rate this far. In boosting we grow one tree at a time, slightly modifying the previously grown tree in order to get a better prediction. 
+
+g) Effect of number of trees on the test error, for bagging and random forests. 
+
+Plotting of test-MSE as a function of number of trees. 
+```{r}
+
+set.seed(4268)
+train.predictors = Carseats.train[,-1]
+test.predictors = Carseats.test[,-1]
+Y.train = Carseats.train[,1]
+Y.test = Carseats.test[,1]
+
+bag.Car = randomForest(train.predictors, y = Y.train, xtest = test.predictors, ytest = Y.test, mtry = 10, ntree = 500)
+rf.Car = randomForest(train.predictors, y = Y.train, xtest = test.predictors, ytest = Y.test, mtry = 3, ntree = 500)
+plot(1:500, bag.Car$test$mse, col = "blue", type = "l", xlab = "Number of Trees", ylab = "Test MSE",ylim=c(2,2.8))
+lines(1:500, rf.Car$test$mse, col = "green")
+
+legend("topright", c("m = p", "m = p/3"), col = c("blue", "green"), cex = 1, lty = 1)
+```
+
+
+#Problem 3 Create a spam filter with classification trees 
+
+Split the data:
+```{r}
+library(kernlab)
+data(spam)
+
+set.seed(4268)
+n <- nrow(spam)
+spam_train_index = sample(1:n, n*0.7, replace = F)
+
+spam.train <- spam[spam_train_index,]
+spam.test <- spam[-spam_train_index,]
+```
+
+Fit a tree:
+```{r}
+spam.tree <- tree(type ~., data = spam.train)
+
+summary(spam.tree)
+```
+```{r}
+plot(spam.tree)
+text(spam.tree, pretty = 0)
+```
+
+
+Prediction of response:
+```{r}
+spam.pred <- predict(spam.tree, newdata = spam.test, type = 'class')
+
+classification.table <- table(spam.pred, spam.test$type)
+
+misclass.rate = 1 - (sum(diag(classification.table)))/(sum(classification.table))
+misclass.rate
+```
+
+Using cv to find the optimal tree-size:
+```{r}
+set.seed(4268)
+spam.cv <- cv.tree(spam.tree, FUN = prune.misclass)
+
+best <- which.min(spam.cv$dev)
+
+plot(spam.cv$size, spam.cv$dev, type = 'b')
+points(spam.cv$size[best], spam.cv$dev[best], col = 'red')
+```
+
+Fit the new, optimal tree:
+```{r}
+spam.pruned <- prune.misclass(spam.tree, best = 6) #we choose size 6, since a smaller tree is more interpretable.
+
+spam.pruned.pred <- predict(spam.pruned, newdata = spam.test, type = 'class')
+
+pruned.table <- table(spam.pruned.pred, spam.test$type)
+
+pruned.misclass  <- 1 - sum(diag(pruned.table))/sum(pruned.table)
+
+pruned.table
+pruned.misclass
+```
+
+Plotting of the tree from the cv
+```{r}
+plot(spam.pruned)
+text(spam.pruned, pretty = 0)
+```
+
+
+Creating a decision tree using bagging: 
+```{r}
+set.seed(4268)
+spam.bag <- randomForest(type~., data = spam.train, n_trees = 500, mtry = ncol(spam)-1, importance = T)
+
+spam.bag.pred <- predict(spam.bag, newdata = spam.test, type = 'class')
+
+bag.table <- table(spam.bag.pred, spam.test$type)
+
+bag.misclas <- 1 - sum(diag(bag.table))/sum(bag.table)
+
+bag.table
+bag.misclas
+```
+Significantly fewer misclassifications. 
+
+Variable importance:
+```{r}
+varImpPlot(spam.bag)
+```
+
+
+Now considering the random forests algorithm: 
+```{r, fig.height = 6, fig.width = 8}
+set.seed(4268)
+spam.rf <- randomForest(type ~., data = spam.train, n_trees = 500, mtry = 8, importance = T)
+
+spam.rf.pred <- predict(spam.rf, newdata = spam.test, type = 'class')
+
+rf.table <- table(spam.rf.pred, spam.test$type)
+
+rf.misclas <- 1 - sum(diag(rf.table))/sum(rf.table)
+
+rf.table
+rf.misclas
+```
+
+Here the classifcation rate is even smaller. Let's take a look at the different predictors. Which is most important when deciding wheter an email is spam or not.
+
+```{r, fig.height = 4, fig.width = 8}
+varImpPlot(spam.rf)
+```
+Looking at the variable importance, it looks like the same variables are marked as the important variables as in the single tree from the cv-selection.
+
+
+Now we look at boosting. The bernoulli version of gbm takes 0 and 1's as responses. Hence we have to change this:
+```{r}
+set.seed(4268)
+
+spam.boost.set <- spam
+spam.boost.set$type = c()
+spam.boost.set$type[spam$type == "spam"] = 1
+spam.boost.set$type[spam$type == "nonspam"] = 0
+
+spam.boost <- gbm(type ~., data = spam.boost.set[spam_train_index,], n.trees = 5000, interaction.depth = 3, shrinkage = 0.001)
+spam.boost.pred <- predict(spam.boost, newdata = spam.boost.set[-spam_train_index,], type = 'response', n.trees = 5000)
+
+
+#now we need to transform back to 0 and 1, now we have probabilities 
+spam.boost.pred <- ifelse(spam.boost.pred > 0.5, 1, 0)
+
+boost.table <- table(spam.boost.pred, spam.boost.set[-spam_train_index,]$type)
+
+boost.misclass = 1 - sum(diag(boost.table))/sum(boost.table)
+
+boost.misclass
+```
+
+To summarize we see that the random forest approach gave the least misclassification error. In total, a simple tree has more misclass. error than all these three last approaches. 
+
+
+

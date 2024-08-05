@@ -1,0 +1,141 @@
+---
+title: "Exc3"
+output: html_document
+date: "2023-05-25"
+---
+
+#Problem 1
+
+```{r}
+library(ISLR)
+Auto <- subset(Auto, select = -name) #remove the predictor name
+# Auto$origin <- factor(Auto$origin)
+summary(Auto)
+```
+
+Origin are either american (Origin = 1), japanese.. and so on. Here we have to let R know that this is a qualitiativ variable, and not a quantitative. Origin does not have any numerical meaning, so we do not want this to influence the numerical prediction. This is done by:
+
+```{r}
+Auto$origin <- factor(Auto$origin)
+
+#make a scatter plot of all the variables in the dataset
+require(GGally)
+
+ggpairs(Auto, lower = list(continuous = wrap("points", size = 0.1))) +
+  theme_minimal()
+
+```
+See that the origin row is changed from what it was before, in exercise 2. 
+
+Create covariance matrix. Here we have to remove origin, since it is not a continous variable no longer, after we changed it to a qualitative variable(predictor) above. 
+
+```{r}
+corrMatrix <- cor(Auto[, c(1:7)])
+
+corrMatrix
+```
+
+c) 
+
+mpg as response
+```{r}
+model1 <- lm(mpg ~., data = Auto)
+
+summary(model1)
+```
+Wrt to the p-value of the predictors, it looks like cylinders, horsepower and acceleration have little to say on mpg. The F statistic is very low, which indicates that the covariates influence the response mpg. In addition, we have a large R^2, which indicates that the model explaines a lot of the variance in the dataset. 
+
+
+The p value of weight indicates that there is a significant relationship between mpg and weight of the car. Looking at the above scatter plot, we see that much weight, results in small mpg When the weight is less than 2000kg, the relationship flattens. 
+
+
+The estimated coefficient for year is +0.77. This means that a newer car, will have an increasing mpg. (on average +0.77mpg per year)
+
+
+Now we want to investigate the significance of origin. This is, however, a factor with three levels, Origin1, Origin2, Origin3. We have that Origin1 is the refrence level. The estimated coefficient to the Origin2 and 3 are the differences from the reference category, Origin1. Since we have three levels, we have to do a F-test. This is done with anova-function:
+
+```{r}
+anova(model1)
+`````
+The p-value of origin indicates that there is a significant relationship between mpg and origin. 
+
+e) 
+
+```{r}
+library(ggfortify)
+autoplot(model1, smooth.colour = NA)
+```
+We have a clear tendency in the residuals vs fitted plot. We want the points to be randomly scattered around zero. Hence, all residuals do not have the same variance. In addition, the normal qq plot indicate some deviation from the line towards the end. However, the normality assumption seems to be ok. Moreover, in the residuals vs leverage plot, the 14th has high leverage, hence we should check if this observation is an outlier. A large leverage indicate that this observation influence the estimation results, and that the values of x_i are unusual.
+
+
+Normal QQ-plot of observations drawn from a normal distrubution:
+
+```{r}
+set.seed(2332)
+n <- 100
+
+par(mfrow = c(2, 3))
+for (i in 1:6){
+  sim <- rnorm(n)
+  qqnorm(sim, pch = 1, frame = FALSE)
+  qqline(sim, col = "blue", lwd = 1)
+}
+```
+
+
+g) Interactions: 
+```{r}
+model2 <- lm(mpg ~ cylinders + displacement + horsepower + weight + acceleration + year + origin*year, data= Auto)
+
+summary(model2)
+```
+
+```{r}
+anova(model2)
+```
+
+We see that the estimated calue of year:origin2 (american) is steeper than year:origin3 (japanese). We have that the estimate for year is sort of a reference, meaning: $\hat{\beta}_{\textbf{year, european}} = \hat{\beta}_{\textbf{year}} + \hat{\beta}_{\textbf{year:origin2}}$ and since american is the refrence level, we have $\hat{\beta}_{\textbf{year, american}} = \hat{\beta}_{\textbf{year}}$. 
+
+Higher coefficient means that there are more rapidly change per unit. 
+
+h) some other interactions: 
+```{r}
+Auto$sqrtmpg <- sqrt(Auto$mpg)
+model3 <- lm(sqrtmpg ~ + displacement + weight+ year + origin, data = Auto)
+autoplot(model3)
+```
+
+
+#Problem 2
+
+Confidence interval for Model: $Y=1+3X+ \epsilon$, with $\epsilon∼𝖭(0,1)$. 
+.
+```{r}
+beta0 <- 1
+beta1 <- 3
+true_beta <- c(beta0, beta1) # vector of model coefficients
+true_sd <- 1 # choosing true sd
+nobs <- 100
+X <- runif(nobs, 0, 1) # simulate the predictor variable X
+Xmat <- model.matrix(~X, data = data.frame(X)) # create design matrix
+
+# Count how many times the true value is within the confidence interval
+ci_int <- ci_x <- 0
+nsim <- 1000
+for (i in 1:nsim){
+  y <- rnorm(n = nobs, mean = Xmat %*% true_beta, sd = rep(true_sd, nobs))
+  mod <- lm(y ~ x, data = data.frame(y = y, x = X))
+  ci <- confint(mod)
+
+  # if true value of beta0 is within the CI then 1 else 0
+  ci_int[i] <- ifelse(..., 1, 0)
+
+  # if true value of beta_1 is within the CI then 1 else 0
+  ci_x[i] <- ifelse(..., 1, 0)
+}
+
+c(mean(ci_int), mean(ci_x))
+```
+
+
+

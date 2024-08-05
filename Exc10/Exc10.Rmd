@@ -1,0 +1,140 @@
+---
+title: "Exc10"
+author: "Henrik Sausen"
+date: "2023-05-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+load("pca-examples.rdata")
+
+# We will work with nyt.frame
+nyt_data = nyt.frame
+
+summary(nyt_data$class.labels)
+```
+```{r}
+colnames(nyt_data)[sample(ncol(nyt_data), 30)]
+```
+
+```{r}
+signif(nyt_data[sample(nrow(nyt_data), 5), sample(ncol(nyt_data), 10)], 3)
+```
+
+Create a biplot: (used for pca)
+```{r}
+#nyt_data[,-1] #this is all columns in the data set.
+
+nyt_pca <- prcomp(nyt_data[,-1])
+
+#we can plot the first two pc's:
+biplot(nyt_pca, scale = FALSE)
+
+```
+
+This is too much information, hence it is not interpretable. We rather pick some words with high PC1 weight and PC2 weight. We look at the loading vectors:
+
+```{r}
+nyt_loading <- nyt_pca$rotation[,1:2]
+
+#want to order the loadings:
+informative_loadings = rbind(
+  head(nyt_loading[order(abs(nyt_loading[,1]), decreasing = TRUE),]),
+  head(nyt_loading[order(abs(nyt_loading[,2]), decreasing = TRUE),]) #this gives the r rows that has the most loadings 
+)
+
+biplot(x = nyt_pca$x[,1:2], y= informative_loadings, scale=0)
+
+```
+
+Now we want to create plots for the prop. of variance explained (PVE) and cumulative PVE.
+
+```{r}
+nyt_pca$sdev #standard deviations of each principal component.
+pc.var <- nyt_pca$sdev^2 #variance 
+
+pve <- pc.var / sum(pc.var) #proportion variance explained
+
+plot(pve, xlab = "Principal component", ylab = "PVE")
+```
+Cumulative pve:
+
+```{r}
+plot(cumsum(pve), ylab = "cumulative pve", xlab = "PC")
+```
+
+We see from the plots that the two first principal components only explain a small proportion of the variance/variablility in the data. 
+
+
+#Problem 3 K-means clustering on NYT dataset 
+
+```{r}
+k.means <- kmeans(nyt_data[,-1], 2, nstart = 20) #want to cluster into either art or music 
+
+#cluster assignment 
+k.means$cluster
+```
+
+
+Plot the real lablings. We have to plot the pca's since the nyt-matrix has one column for every word. Hence, we can not plot in two dimentions. 
+```{r}
+par(mfrow = c(1,2))
+plot(nyt_pca$x[,1:2], type = 'n') #first and second score vector 
+points(nyt_pca$x[nyt_data[,"class.labels"]=="art",1:2],pch="A")
+points(nyt_pca$x[nyt_data[,"class.labels"]=="music",1:2],pch="M")
+```
+
+Then we look at the k-means clustering result: 
+
+```{r}
+plot(nyt_pca$x[,1:2],type="n")
+points(nyt_pca$x[nyt_data[,"class.labels"]=="art",1:2],
+       pch="A",col=(k.means$cluster +1)[nyt_data[,"class.labels"]=="art"])
+points(nyt_pca$x[nyt_data[,"class.labels"]=="music",1:2],
+       pch="M",col=(k.means$cluster +1)[nyt_data[,"class.labels"]=="music"])
+```
+
+Hiarichal clustering:
+```{r}
+hc.complete <- hclust(dist(nyt_data[,-1]), method = "complete")
+hc.avg <-  hclust(dist(nyt_data[,-1]), method = "average")
+hc.simple <- hclust(dist(nyt_data[,-1]), method = "single")
+
+par(mfrow = c(1,3))
+plot(hc.complete)
+plot(hc.avg)
+plot(hc.simple)
+
+```
+Wish to cut of at 2 clusters:
+```{r}
+hc.avg.cut <- cutree(hc.avg, 2)
+hc.comp.cut <- cutree(hc.complete, 2)
+hc.simp.cut <- cutree(hc.simple, 2)
+
+hc.avg.cut
+hc.comp.cut
+hc.simp.cut
+```
+
+We use the complete linkage:
+```{r}
+plot(hc.complete)
+```
+
+We use the cut at 2 clusters, and plot the same plot as before
+```{r}
+plot(nyt_pca$x[,1:2],type="n")
+points(nyt_pca$x[nyt_data[,"class.labels"]=="art",1:2],pch="A",
+       col = (hc.comp.cut+1)[nyt_data[,1]=="art"]) #this is a True/False statement. If equal art, we get true, and we color A's with the this col
+        #if false, we get 0, hence no color on the A's. 
+points(nyt_pca$x[nyt_data[,1]=="music",1:2],pch="M", col =  (hc.comp.cut+1)[nyt_data[,"class.labels"]=="music"])
+```
+Here, the clustering does worse than before. 
+
+

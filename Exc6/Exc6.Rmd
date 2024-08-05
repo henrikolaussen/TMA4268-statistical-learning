@@ -1,0 +1,256 @@
+---
+title: "Exc6 Model selection"
+author: "Henrik Sausen"
+date: "2023-05-27"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Problem 2 
+
+```{r}
+library(ISLR)
+library(GGally)
+library(ggplot2)
+
+ggpairs(subset(Credit, select = -c(ID,Gender, Student, Married, Ethnicity))) + theme_minimal()
+
+```
+
+
+#Problem 3
+
+
+Best subset selection based on Cp, BIC and R^2 adjusted.
+```{r}
+library(leaps)
+
+credit.data <- subset(Credit, select = -ID)
+
+#using 75% as training and 25% as test 
+set.seed(1)
+train_index <- sample(1:nrow(credit.data), nrow(credit.data)*0.75)
+credit.data.training <- credit.data[train_index,]
+credit.data.test <- credit.data[-train_index,]
+
+best.sub.select <- regsubsets(Balance ~., data = credit.data.training) #all predictors except ID
+
+r2adj <- summary(best.sub.select)$adjr2
+cp <- summary(best.sub.select)$cp
+bic <- summary(best.sub.select)$bic
+rss <- summary(best.sub.select)$rss
+```
+
+
+Plots
+```{r}
+par(mfrow=c(2,2))
+
+plot(rss, type = 'l', xlab = "number of variables")
+rss.min <- which.min(rss)
+points(rss.min, rss[rss.min], col = 'red')
+
+plot(cp, type = 'l', xlab = "number of variables")
+cp.min <- which.min(cp)
+points(cp.min, cp[cp.min], col = 'red')
+
+plot(r2adj, type = 'l', xlab = "number of variables")
+r2adj.max <- which.max(r2adj)
+points(r2adj.max, r2adj[r2adj.max], col = 'red')
+
+plot(bic, type = 'l', xlab = "number of variables")
+bic.min <- which.min(bic)
+points(bic.min, bic[bic.min], col = 'red')
+```
+
+
+
+
+```{r}
+predict.regsubsets=function(object,newdata,id,...){
+  form=as.formula(object$call[[2]])
+  mat=model.matrix(form,newdata)
+  coefi=coef(object,id=id)
+  xvars=names(coefi)
+  mat[,xvars]%*%coefi
+}
+```
+
+
+
+Best subset selection using 10-fold CV.
+```{r}
+num.predictors <- 10 #number of predictors we have in model to start with. 
+
+k <- 10
+n.training <- nrow(credit.data.training) 
+
+
+set.seed(1)
+folds <- sample(rep(1:k, length = n.training), replace = T) #list of length n, with numbers between 1 and k = 10. We assign one of each observation to one of the folds 1..10
+cv.errors <- matrix(NA, k, num.predictors) #each row indicates a fold, and column inidicates a predictor 
+
+for (j in 1:k) {
+  best.fit <- regsubsets(Balance ~., data = credit.data.training[folds != j, ], nvmax = num.predictors) #all rows (observations) that do not equal j (that is not in the j'th fold)
+  for (i in 1:num.predictors) {
+    pred <- predict(best.fit, credit.data.training[folds == j, ], id = i) #here we make predictions for the observations in the current fold j, id-> each          subset size i 
+    cv.errors[j,i] <- mean((credit.data.training$Balance[folds == j] - pred)^2) #calculate the mean of the error of the predicted model 
+  }
+}
+
+#we want the smallest average error over all the folds for each predictor. ¨
+
+mse.cv <- apply(cv.errors, 2, mean) #2 indicates that we calculate mean by column, 1 means by row
+plot(mse.cv, pch = num.predictors, type = 'b', xlab = 'number of predictors')
+```
+
+```{r}
+optimal_num_pred <- which.min(rmse.cv)
+
+reg.best <- regsubsets(Balance ~., data = credit.data.training)
+coef(reg.best, 4) #the predictors below are the model with 4 predictors that is the best, chosen by best subset selection. 
+```
+
+
+```{r}
+model <- lm(Balance ~ Income + Limit + Cards + Student, data = credit.data.training)
+model.predict <- predict(model, newdata = credit.data.test)
+summary(model)
+```
+
+Now we want to calculate the error of our prediction with the best model - that we found above. We calculate the test Mean Square Error below: 
+
+```{r}
+MSE = mean((credit.data$Balance[-train_index]-model.predict)^2)
+MSE
+```
+
+#Problem 4
+
+Now we want to select the best model using FW, BW and Hybrid Stepwise Selection. 
+```{r}
+#forward 
+regfit.fw <- regsubsets(Balance ~.,data = credit.data.training, method = "forward")
+
+bic_fw <- summary(regfit.fw)$bic
+cp_fw <- summary(regfit.fw)$cp
+radj_fw <- summary(regfit.fw)$adjr2
+rss_fw <- summary(regfit.fw)$rss
+
+par(mfrow = c(2,2))
+
+plot(rss_fw, type = 'l', xlab = "number of variables")
+rss_fw.min <- which.min(rss_fw)
+points(rss_fw.min, rss_fw[rss_fw.min], col = 'red')
+
+plot(cp_fw, type = 'l', xlab = "number of variables")
+cp_fw.min <- which.min(cp_fw)
+points(cp_fw.min, cp_fw[cp_fw.min], col = 'red')
+
+plot(radj_fw, type = 'l', xlab = "number of variables")
+radj_fw.max <- which.max(radj_fw)
+points(radj_fw.max, radj_fw[radj_fw.max], col = 'red')
+
+plot(bic_fw, type = 'l', xlab = "number of variables")
+bic_fw.min <- which.min(bic_fw)
+points(bic_fw.min, bic_fw[bic_fw.min], col = 'red')
+```
+
+
+#Problem 5 Ridge Regression
+
+```{r}
+library(glmnet)
+
+#create model matrix 
+X <- model.matrix(Balance ~., data = credit.data)[,-1]
+Y <- credit.data$Balance
+
+set.seed(1)
+
+Ridge.model <- cv.glmnet(X[train_index,],Y[train_index], alpha = 0) #uses cv to find the optimal lambda
+coef(Ridge.model)
+```
+
+```{r}
+lm.model <- lm(Balance ~., data = credit.data[train_index,])
+summary(lm.model)
+
+lm.predict <- predict(lm.model, newdata = credit.data.test)
+
+MSE_lm <- mean((credit.data.test$Balance - lm.predict)^2)
+
+MSE_lm
+```
+Comparing these two, we see that the estimated parameters are smaller for the Ridge regression. 
+
+Plots:
+```{r}
+
+set.seed(1)
+best.lambda <- Ridge.model$lambda.min
+
+ridge.prediction <- predict(Ridge.model, s = best.lambda, newx = X[-train_index,])
+
+MSE_best_lambd <- mean((Y[-train_index] - ridge.prediction)^2)
+
+MSE_best_lambd
+```
+
+Still less mean square error than for the model selection done above. But Ridge is poweful, when we have Least Square estimates with high variance. Then Ridge will trade a large decrease in variance for a small increase in bias. This happens because an increased value of lambda will reduce the complexity of the model, meaning that the coefficient estimates decrease in value. Since test-MSE is closely related to both variance and bias, the minimal test-MSE of the ridge regression will give a good trade of variance and bias in the model. However, we see that the MSE is more for the Ridge regression than for the normal linear model in this case.
+
+```{r}
+plot(Ridge.model)
+```
+
+#Problem 5 Lasso 
+
+```{r}
+set.seed(1) #such that we get the same lambda using cross validation
+lasso.model <- cv.glmnet(X[train_index, ], Y[train_index], alpha = 1)
+
+best_lambda_lass <- lasso.model$lambda.min
+
+lass_predict <- predict(lasso.model, s = best_lambda_lass, newx = X[-train_index,])
+
+MSE_lass <- mean((credit.data.test$Balance - lass_predict)^2)
+MSE_lass
+```
+```{r}
+coef(lasso.model)
+```
+We see that the Lasso sets some parameters to 0. This happens because of the l1 penalisation. 
+
+
+```{r}
+plot(lasso.model)
+```
+#Problem 7 Principal components
+How many PC's should we use for this dataset? We use cross-validation in order to decide. 
+
+```{r}
+library(pls)
+set.seed(1)
+pcr.model <- pcr(Balance ~., data = credit.data.training, scale = T, validation = 'CV')
+validationplot(pcr.model, val.type = "MSEP")
+```
+The plot shows the root-mean square error. 
+```{r}
+summary(pcr.model)
+```
+
+We see that the amount of extra variance explained after 8 components is quite small. Hence, 8 PCs would suffice. 
+
+#Problem 8 PCR 
+```{r}
+pcr.predict <- predict(pcr.model, newdata = credit.data.test, ncomp = 10)
+
+pcr_MSE <- mean((credit.data.test$Balance - pcr.predict)^2)
+
+pcr_MSE
+```
+
+Using 10 PCs we get the MSE above in the test set. 

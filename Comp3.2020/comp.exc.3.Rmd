@@ -1,0 +1,300 @@
+---
+title: "Comp.exc2020"
+author: "Henrik Sausen"
+date: "2023-05-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+install.packages("knitr") 
+install.packages("FactoMineR", dependencies = TRUE) 
+install.packages("factoextra") 
+install.packages("ggfortify") 
+install.packages("glmnet")
+install.packages("tree") 
+install.packages("randomForest") 
+install.packages("gbm") 
+install.packages("ggfortify") 
+install.packages("keras")
+install.packages("pls")
+install.packages("gam")
+```
+
+
+#Problem 1 NN
+
+```{r}
+library(ISLR)
+library(keras)
+set.seed(1)
+College$Private = as.numeric(College$Private)
+train.ind = sample(1:nrow(College), 0.5 * nrow(College)) 
+college.train = College[train.ind, ]
+college.test = College[-train.ind, ] 
+str(College)
+
+```
+
+
+#Problem 2 
+```{r}
+id <- "1CA1RPRYqU9oTIaHfSroitnWrI6WpUeBw" # google file ID
+d.corona <- read.csv(sprintf("https://docs.google.com/uc?id=%s&export=download",
+    id), header = T)
+```
+
+a) 
+```{r}
+table(d.corona$deceased, d.corona$country) #0 ->deceased did not die from corona, 1 -> deceased died from corona
+```
+
+
+```{r}
+table(d.corona$deceased, d.corona$sex)
+```
+
+```{r}
+table(d.corona$deceased, d.corona$sex, d.corona$country)
+```
+
+b)
+```{r}
+corona.logreg <- glm(deceased ~., data = d.corona, family = 'binomial')
+summary(corona.logreg)
+```
+
+```{r}
+anova(corona.logreg, test = "Chisq")
+```
+
+Multiple choice: 
+i) According to anova, country is a releveant factor in the model. 
+ii) the p-value is larger than others, hence there is  evidence that this variable should be removed. However, a large p-value can happen by chance, so I would be carefull with just removing this variable. 
+iii) 
+iv) Chances of dying is approx. 3.12 larger for males than females. Wrong. 
+
+c) 
+
+```{r}
+france.male <- expand.grid(sex="male",age= seq(20,100,1) ,country="France")
+plot(d.corona$age, d.corona$deceased)
+```
+
+
+d) 
+
+```{r}
+library(GGally)
+```
+
+
+
+i) does men have a general higher probability of dying from corona? According to the summary above, the slope of men is (beta_female + 0.0232), hence steeper than for females. The p-value of this factor is significant at the 0.001 level, meaning there are evidence that this covariate is significant to the model. This means that there are evidence that the number of deceased that die is dependent on men. However, this p-value might also happen by chance, so one can not depend to much on p-values. One also have to look at the collection of data. For example, there might be a greater chance of dying from corona if one is older. Hence one might want to look at the fraction of old men (above 60) in the data: 
+
+```{r}
+table(d.corona$age > 60, d.corona$sex)
+```
+
+One can see that we generally have more samles of females than for men, so we have to take that into account as well. Hence this model is not enough to say that there are a greater probability of dying from corona if you are a man. WRONG
+
+Correct: The model says that the risk for men is higher. 
+
+
+ii) Is age a greater risk factor for men than for females? 
+```{r}
+logreg2 <- glm(deceased ~ age + sex + country + sex:age, data = d.corona, family = "binomial")
+summary(logreg2)
+```
+Yes. WROMG
+
+Here we should make a plot using the interaction term age*sex. Look at p-value of interactionterm. HAVE FIXED THIS.
+
+
+iii) Is age a greater risk factor for the French population than for the Korean population?
+```{r}
+logreg3 <- glm(deceased ~ age + country + sex + country:age, data = d.corona, family = "binomial")
+summary(logreg3)
+```
+No, because of p-value. 
+
+
+e) Model interpretation. I do not trust the result that people from the french population is at higher risk of dying from covid than the others. This is because there are large differences in number of observations from each of the countries, hence the results can not be trusted. This is seen from the tables plotted earlier in this task. 
+
+f) Multiple choice.
+
+i) yes 
+ii) yes, for this tree since age is the root node, and hence there are evidence that this is an important predictor. 
+iii) yes, because if we have a classifier that only predicts that no one will die, will have an error rate of 2.24%. Hence, classifiers should have a lower error rate than this.
+iv) The LDA has a misclassification rate of 3.4%. Yes.
+
+
+#Problem 3
+
+```{r}
+id <- "1heRtzi8vBoBGMaM2-ivBQI5Ki3HgJTmO" # google file ID
+d.support <- read.csv(sprintf("https://docs.google.com/uc?id=%s&export=download", id), header = T)
+# We only look at complete cases
+d.support <- d.support[complete.cases(d.support), ]
+d.support <- d.support[d.support$totcst > 0, ]
+```
+
+
+a) 
+
+Visualiase the data with histograms:
+```{r}
+attach(d.support)
+
+par(mfrow = c(2,5))
+hist(I(log(totcst)))
+hist(age)
+hist(num.co)
+hist(edu)
+hist(meanbp)
+hist(scoma)
+hist(hrt)
+hist(resp)
+hist(temp)
+hist(pafi)
+
+```
+
+
+If we use the logaritmic transformation of totcst, we get something that looks quite normally distributed. We will use this from now.
+
+b)
+Fit a linear model:
+```{r}
+support.fit <- lm(log(totcst) ~ age + temp + edu + resp + num.co + dzgroup, d.support)
+summary(support.fit)
+```
+
+i) When the age of a patient increace by ten years, the expected change of the factor totcst is:
+```{r}
+factor <- I(exp(support.fit$coefficients["age"]*10))
+```
+
+The factor for which the cost will change is hence 0.9312117. 
+
+ii) Residual analysis:
+```{r}
+plot(support.fit)
+```
+
+
+The normal QQ plot seems very good. Hence the assumption of normally distributed errors seems to be good for the transformed version of the model.
+The residuals vs fitted plot seems to indicate some pattern in the variance of the residuals. Hence the assumption that the residuals have equally distributed variance does not seem to be ok. WRONG. The detected pattern might come from the fact that we have more datapoints corresponding to the two clusters. Hence there are noe violations. 
+
+iii) Does effect of age depend on disease group? Do a formal hypothesis test. 
+
+```{r}
+support.fit2 <- lm(I(log(totcst)) ~ age + temp + edu + resp + num.co + dzgroup + age:dzgroup, data = d.support)
+anova(support.fit2)
+```
+
+Here it seems like the p value of the F test for age:dzgroup is quite small. Hence, there exists evidence that we can reject H_0. Here H0 is beta_{age:dzgroup} = 0. The hypothesis test states that there is a correlation between these two. 
+
+c) 
+```{r}
+library(glmnet)
+set.seed(12345)
+train.ind = sample(1:nrow(d.support), 0.8* nrow(d.support)) 
+d.support.train = d.support[train.ind, ]
+d.support.test = d.support[-train.ind, ]
+
+X.train <- model.matrix(I(log(totcst)) ~., data = d.support.train)[,-1]
+Y.train <- I(log(d.support.train$totcst))
+
+X.test <-model.matrix(I(log(totcst)) ~ ., data = d.support.test)[,-1]
+Y.test <- I(log(d.support.test$totcst))
+
+ridge.cv <- cv.glmnet(X.train, Y.train, alpha = 0) #ten fold CV
+best_lambda <- ridge.cv$lambda.min
+
+ridge.support <- glmnet(X.train, Y.train, alpha = 0, lambda = best_lambda)
+
+ridge.pred <- predict(ridge.support, s = best_lambda, newx = X.test)
+
+MSE.ridge <- mean((Y.test - ridge.pred)^2)
+
+MSE.ridge
+```
+
+
+```{r}
+coef(ridge.support)
+```
+
+```{r}
+plot(ridge.cv)
+```
+
+```{r}
+plot(glmnet(X.train, Y.train, alpha = 0), "lambda")
+```
+
+d) PLS
+```{r}
+library(pls)
+set.seed(12345)
+
+pls.reg <- plsr(I(log(totcst)) ~ ., data = d.support.train, scale = T, validation = 'CV')
+
+summary(pls.reg)
+```
+```{r}
+#choosing an optimal number of principal components. 
+validationplot(pls.reg, val.type = "MSEP") 
+```
+
+If we use 6 components, we get a rather easy model. Looking at the summary, the CV root MSE does not change. We test prediction:
+
+```{r}
+best = 6
+pls.pred <- predict(pls.reg, newdata = d.support.test, ncomp = best)
+
+MSE.pls <- mean((Y.test - pls.pred)^2)
+MSE.pls
+```
+The error is slightly smaller. 
+
+e) Other models: 
+One with regression trees, we use random forests. First we fit a normal tree just for fun. 
+```{r}
+library(tree)
+tree.model = tree(log(totcst) ~., data = d.support.train)
+
+plot(tree.model)
+text(tree.model, pretty = 0)
+```
+
+
+```{r}
+library(randomForest)
+rf.model <- randomForest(log(totcst) ~., data = d.support.train, n.tree=500, importance = T, mtry = 4)
+
+```
+
+```{r}
+importance(rf.model)
+```
+
+```{r}
+varImpPlot(rf.model)
+```
+
+Prediction 
+```{r}
+rf.pred <- predict(rf.model, newdata = d.support.test)
+
+rf.MSE <- mean((Y.test - rf.pred)^2)
+rf.MSE
+```
+
+
+

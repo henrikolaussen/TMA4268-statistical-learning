@@ -1,0 +1,305 @@
+---
+title: "Exam2022"
+author: "Henrik Olaussen"
+date: "2023-05-31"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+#Problem 4 
+```{r}
+id <- "1kGOLsnKA0Uq2lWKlMjhAF8h71sc0WcLO" # google file ID
+d.bodyfat <- read.csv(sprintf("https://docs.google.com/uc?id=%s&export=download",
+    id))[, -c(1)]
+set.seed(1234, sample.kind = 'Rejection')
+training_set_size <- floor(0.8 * nrow(d.bodyfat))
+samples <- sample(1:nrow(d.bodyfat), training_set_size, replace = F)
+d.body.train <- d.bodyfat[samples, ]
+d.body.test <- d.bodyfat[-samples, ]
+
+d.bodyfat
+```
+
+```{r}
+#i 
+bodyfat.fit <- lm(BodyFat ~ Age + Weight + Height + Neck + Chest + Abdomen + I(Abdomen^2) + Hip + Thigh + Knee + Ankle + Biceps + Forearm + Wrist, data = d.body.train)
+
+#ii
+summary(bodyfat.fit)
+```
+The R-squared is 0.7559, which is good enough. This tells us that the model explains a proportion of 0.7559 of the variability in the data. The modelfit is thus alright. Moreover, the adjusted R squared is a modified version of R squared, which take into account the amount of predictors used in a model. The RSS, the amount of unexplained variablity in the model, will decrease as the number of predictors increases. This results in an increase in R^2, hence we will always end up with a model using all the predictors. This indicates a model with low training error, but this might result in overfitting. We need a measure that can compare models when the number of predictors is different, and this is why we use adjusted R^2. The adjusted R2 try to avoid using unessecary predictors/noise variables. 
+
+The difference in R2 and adjusted R2 (R2 is lower) tells us that there might be some unneccessary predictors in the model.
+
+```{r}
+#iii) 
+plot(bodyfat.fit)
+```
+
+Here the normal QQ plot is fine. The normal QQ plot tells us how good the assumption that the residuals are normally distributed are. If the points lay on the line, this indicates that the assumption is ok. (Some deviation at the end) Moreover, the residuals vs fitted plot shows a randiom fluctation of the residuals around zero. This indicates that the variance of the residuals do not have a tendecy, hence the assumtion that all residuals have equal variance is also ok. (model assumption is that all residuals are normally distributed with expectation 0 and equal variance) Hence, the assumption that the residuals have expectation 0 is also ok (because of the fluctation around zero).
+
+b) Model selection using BIC and forward selection:
+
+```{r}
+library(leaps)
+?regsubsets
+fw.selection <- regsubsets(BodyFat ~ Age + Weight + Height + Neck + Chest + Abdomen + I(Abdomen^2) + Hip + Thigh + Knee + Ankle + Biceps + Forearm + Wrist, data = d.body.train, method = "forward", nvmax = 13)
+
+best = which.min(summary(fw.selection)$bic)
+
+summary(fw.selection)
+plot(fw.selection)
+```
+We see that, according to forward selection, the model with Weight, Abdomen, Abdomen^2 and Wrist is the one that performs best.
+
+
+Fit the model and calc. test MSE 
+```{r}
+bodyfat.adjfit <- lm(BodyFat ~ Weight + I(Abdomen^2) + Abdomen + Wrist, data = d.body.train)
+bodyfat.predict <- predict(bodyfat.adjfit, newdata = d.body.test)
+
+test.MSE <- mean((d.body.test$BodyFat - bodyfat.predict)^2)
+test.MSE
+```
+
+
+c) Model selection with Lasso. 
+```{r}
+library(glmnet)
+
+X.train <- model.matrix(BodyFat ~. + I(Abdomen^2), data = d.body.train)
+Y.train <- d.body.train$BodyFat
+
+X.test <- model.matrix(BodyFat ~. + I(Abdomen^2), data = d.body.test)
+Y.test <- d.body.test$BodyFat
+  
+set.seed(4268, sample.kind = 'Rejection')
+#?cv.glmnet
+lasso.cv <- cv.glmnet(X.train, Y.train, alpha = 1, nfolds = 5)
+
+best.lambda.1se <- lasso.cv$lambda.1se
+
+plot(lasso.cv)
+```
+
+```{r}
+lasso.fit <- glmnet(X.train, Y.train, alpha = 1, lambda = best.lambda.1se)
+
+lasso.pred <- predict(lasso.fit, s = best.lambda.1se, newx = X.test)
+
+lasso.MSE <- mean((Y.test - lasso.pred)^2)
+lasso.MSE
+```
+
+Prediction when using lambda_min
+```{r}
+best.lambda.min = lasso.cv$lambda.min
+lasso.fit2 <- glmnet(X.train, Y.train, alpha = 1, lambda = best.lambda.min)
+
+lasso.pred2 <- predict(lasso.fit2, s = best.lambda.min, newx = X.test)
+
+lasso2.MSE <- mean((Y.test - lasso.pred2)^2)
+lasso2.MSE
+```
+
+We get a smaller test error when using the lambda min.
+
+```{r}
+plot(glmnet(X.train, Y.train, alpha = 1), "lambda")
+```
+
+```{r}
+coef(lasso.fit2)
+
+coef(lasso.fit)
+```
+We see that the 1se Lasso has set many parameters to 0, while the min lambda lasso just minimized the coefficients. Hence, since the goal is model selection, the best choice is to use the 1se lambda. 
+
+
+
+
+d) PCA and PCR
+```{r}
+pca <-prcomp(~. + I(Abdomen^2), data = d.body.train, scale = T)
+
+pve <- pca$sdev^2/sum(pca$sdev^2) * 100
+plot(pve, type = 'b', xlab = 'Principal components')
+```
+Here we see that the two first principal components explain a lot of the variance in the coefficients. In addition, the extra variance explained after the 6'th PC is very small. Hence we might use 2 to 6 principal components. 
+
+```{r}
+plot(cumsum(pve), type = 'b', xlab = 'Principal components')
+```
+
+ii) CV to choose number of PCR on the training data 
+```{r}
+library(pls)
+set.seed(4268, sample.kind = 'Rejection')
+
+pcr.d <- pcr(BodyFat ~. + I(Abdomen^2), data = d.body.train, scale = T, Validation = "CV")
+validationplot(pcr.d, type = 'b')
+```
+Using 6 PCs
+```{r}
+pc_comp1 = 6
+pcr.pred1 <- predict(pcr.d, newdata = d.body.test, ncomp = pc_comp1)
+
+pcr.MSE1 <- mean((Y.test - pcr.pred1)^2)
+pcr.MSE1
+```
+
+
+
+Using 14 PCs 
+```{r}
+pc_comp2 = 14
+pcr.pred2 <- predict(pcr.d, newdata = d.body.test, ncomp = pc_comp2)
+
+pcr.MSE2 <- mean((Y.test - pcr.pred2)^2)
+pcr.MSE2
+```
+
+Less error when using 14 PCs. This might indicate that we need the full model in order to obtain a good result. The reason why we need all PCs might be that the first PCs do not correlate much with the response, even though the PC explains a lot of the variability in the coefficients. Hence we need the full model in order to make good predictions.
+
+#Problem 5 Data analysis
+
+```{r}
+id <- "1HM1ytt-x9QkTHQu7bMvhBJSJWihzpZJ2" # google file ID
+d.heart <- read.csv(sprintf("https://docs.google.com/uc?id=%s&export=download",
+    id))
+d.heart$HeartDisease <- as.factor(d.heart$HeartDisease)
+# 70% of the sample size for training set
+training_set_size <- floor(0.7 * nrow(d.heart))
+set.seed(4268)
+train_ind <- sample(seq_len(nrow(d.heart)), size = training_set_size)
+train <- d.heart[train_ind, ]
+test <- d.heart[-train_ind, ]
+```
+
+a) 
+Logistic reg
+```{r}
+logreg.fit <- glm(HeartDisease ~ BMI + Smoking + AlcoholDrinking + Sex + AgeCategory + Smoking:Sex + AlcoholDrinking:Sex, data = train, family = "binomial" )
+
+summary(logreg.fit)
+```
+
+ii) In this set we have 13 age categories. However, we just estimate 12 regression parameters. All refrence-categories are in the intercept.
+
+c) 
+
+LDA
+```{r}
+library(MASS)
+lda.mod <- lda(HeartDisease ~., data = train)
+
+lda.prob <- predict(lda.mod, newdata = test)$posterior
+lda.pred <- predict(lda.mod, newdata = test)$class
+
+lda.tab <- table(lda.pred, test$HeartDisease)
+
+lda.misclass = 1 - sum(diag(lda.tab)) / sum(lda.tab)
+
+lda.misclass
+```
+
+```{r}
+qda.mod <- qda(HeartDisease ~., data = train)
+
+qda.prob <- predict(qda.mod, newdata = test)$posterior
+qda.pred <- predict(qda.mod, newdata = test)$class
+
+qda.tab <- table(qda.pred, test$HeartDisease)
+
+qda.misclass = 1 - sum(diag(qda.tab)) / sum(qda.tab)
+
+qda.misclass
+```
+
+Calculate the AUC
+```{r}
+library(pROC)
+library(plotROC)
+
+qda.roc <- roc(response = test$HeartDisease, predictor = qda.prob[,2], print.auc = T, plot = T)
+```
+
+```{r}
+lda.roc <- roc(response = test$HeartDisease, predictor = lda.prob[,2], print.auc = T, plot = T)
+```
+
+iv) Why KNN would not work so well for this task? In KNN, we need few predictors, because then the points are close to each other, resulting in a better result - low dimentional predictor space. Curse of dimentionality
+
+d) tree based mehtods 
+
+Use randomforests
+```{r}
+library(tree)
+library(gbm)
+
+  
+set.seed(4268, sample.kind = 'Rejection')
+m = ncol(train) -1
+
+rf <- randomForest(HeartDisease ~., data = train, n.trees = 500, importance = T, mtry = 4)
+
+rf.pred <- predict(rf, newdata = test, type = "class")
+
+rf.tab <- table(rf.pred, test$HeartDisease)
+
+rf.misclass <- 1 - sum(diag(rf.tab))/sum(rf.tab)
+rf.misclass
+#boost <- gbm(HeartDisease ~., data = train, distribution = "bernoulli", n.trees = 500, interaction.depth = 4, shrinkage = 0.1)
+```
+Chosen number of trees equal 500, only need large enough. In addidtion, we have chosen sqrt(#pred) which is normal. 
+
+
+Importance of variables based on node impurity
+```{r}
+varImpPlot(rf, type = 2)
+```
+
+
+#Problem 6
+
+a)
+```{r}
+sum = -7.035768 + 0.042950*25 + 0.574912 - 0.314465 + 0.563997 + 3.788152 + 0.141130 + 0.001067
+pi = I(exp(sum))/(1+I(exp(sum)))
+pi
+```
+
+b)
+```{r}
+library(boot)
+set.seed(4268, sample.kind = 'Rejection')
+
+boot.fn <- function(data, index) {
+    X = d.heart$BMI[index]
+    diff = mean(X) - median(X)
+    return(diff)
+}
+
+b = boot.sample <- boot(d.heart, boot.fn, R = 1000)
+
+#confidence interval 
+d.bmi <- d.heart$BMI
+diff <- mean(d.bmi) - median(d.bmi)
+
+#at 2.5% in standard normal dist, we get (alpha/2 = 0.025), with 1.96: 
+upper = round(diff + 1.96 * 0.03177003,3)
+lower = round(diff -1.96 * 0.03177003,3)
+
+upper 
+lower
+
+```
+
+
+
+
+

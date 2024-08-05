@@ -1,0 +1,271 @@
+---
+subtitle: "TMA4268 Statistical Learning V2023"
+title: "Exercise 2"
+author: "Henrik Olaussen"
+date: "i dag"
+output: 
+  # html_document
+  pdf_document
+---
+  
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(echo = TRUE,tidy=TRUE,message=FALSE,warning=FALSE,strip.white=TRUE,prompt=FALSE,
+                      cache=TRUE, size="scriptsize",fig.width=4, fig.height=3,fig.align = "center")
+
+```
+
+```{r,eval=TRUE,echo=FALSE}
+# install.packages("knitr") # probably already installed
+# install.packages("rmarkdown") # probably already installed
+# install.packages("ggplot2") # plotting with ggplot2
+# install.packages("dplyr") # for data cleaning and preparation
+# install.packages("ggfortify") # for model checking
+# install.packages("MASS")
+# install.packages("tidyr")
+# install.packages("carData") # dataset
+# install.packages("class")
+# install.packages("pROC")
+# install.packages("plotROC")
+# install.packages("boot")
+# install.packages("ggmosaic")
+library("knitr")
+library("rmarkdown")
+```
+
+<!--  Etc (load all packages needed). -->
+
+#Problem 2 
+
+MSE: Mean Square Error. $MSE = 1/n \sum_{i=1}^n(y_i-\hat{f}(x_i))^2$, $\hat{f}(x_i)$ is the prediction given from the estimated $\hat{f}$ at the i´th value. This MSE uses the training data. Can think of it as training MSE. We do not care too much about the training MSE. We are interested in the accuracy of the prediction on some unseen test-data. Want our method to accuratly predict the future, not fit well with the past. We want the lowest test-MSE not lowest training-MSE. Moreover, there are no guarantee that the lowest training MSE will give the lowest test MSE. For example, a too flexible model will often fit the predictions badly, as the model is too closely related the training data, and hence fit predictions badly, as test data will differ from the training data, we need a trade-off. 
+
+
+Furthermore, a small variance (high bias) means that we have under-fitted the data. High bias means that the fitted model captures the true relationship badly, e.g. a straight line that is supposed to fit a logarithmic function. If the fitted line is very flexible and fits the training data points perfectly, we have low bias. This might cause overfitting in the test data. When we look at how the model fits the test data, the difference in fit is measured through variance. The model that does not capture the true relationship tend to get a smaller variance (sums of squares measured between the   fit of the training data and the test data) to the test data than the flexible model (with high bias). Hence, the variance is smaller in the high bias case, and larger in the small bias case. 
+
+#Problem 3
+
+dimentions of the data: 392 observations, and 9 covariates. Qualitative predictors: cylinders, origin and name. Quantitative: mpg, dipl, horsepower, weight, acc, year. 
+
+
+```{r desc, fig.width=6, fig.height=6, fig.cap="Pairs plot of the academic salary data set."}
+library(ISLR)
+library(GGally)
+#Auto
+#?Auto
+
+#the range of the predictors
+range(Auto$mpg)
+range(Auto$origin)
+
+#mean
+mean(Auto$mpg)
+
+#standard deviation
+sd(Auto$mpg)
+
+#reduced dataset
+redAuto <- Auto[-c(10:85),] #remove data 10->85
+
+ggpairs(redAuto[, c(1,3,4,5,6,7)]) + theme_minimal()  #without qualitative pred
+```
+
+Seems to be strong relationship between all the curves that has some pattern. 
+
+Predict mpg. We look at the covariates that looks to have a relationship with mpg from the plot above.
+Below, we look at the qualitative predictors: 
+
+Cylinder:
+
+```{r}
+ggplot(Auto, aes(as.factor(cylinders), mpg)) + 
+  geom_boxplot()
+```
+
+We see that the data varies as we have different values of cylinder. Hence the predictor cylinder seems to have an impact on the response mpg. Same applies to origin as well. 
+
+Next find the correlation from the covariance matrix 
+
+```{r}
+covMat <- cov(Auto[,c(1,3,4,5,6,7)])
+covMat
+```
+
+
+#Problem 4
+```{r}
+library(MASS)
+covMatrix1 <- matrix(c(1,0,0,1), ncol=2)
+mu = c(2,3)
+
+simVals = mvrnorm(n=1000, mu, covMatrix1)  
+simVals
+simDataFrame <- as.data.frame(simVals)
+colnames(simDataFrame) <- c("x1","x2")
+plot <- ggplot(simDataFrame, aes(x1,x2)) + 
+  geom_point() + 
+  theme_minimal()
+
+plot
+```
+#Problem 5
+
+```{r}
+set.seed(2) # to reproduce
+
+M <- 100 # repeated samplings, x fixed
+nord <- 20 # order of polynomials
+
+#------
+
+x <- seq(from = -2, to = 4, by = 0.1)
+
+truefunc <- function(x) {
+  return(x ^ 2)
+}
+
+true_y <- truefunc(x)
+error <- matrix(rnorm(length(x) * M, mean = 0, sd = 2),
+                nrow = M,
+                byrow = TRUE)
+ymat <- matrix(rep(true_y, M), byrow = T, nrow = M) + error  # Each row is a simulation
+
+#------
+
+predictions_list <- lapply(1:nord, matrix, data = NA, nrow = M, ncol = ncol(ymat))
+for(i in 1:nord){
+  for(j in 1:M){
+    predictions_list[[i]][j, ] <- predict(lm(ymat[j,] ~ poly(x, i, raw = TRUE)))
+  }
+}
+
+# Plotting -----
+
+library(tidyverse) # The tidyverse contains ggplot2, as well as tidyr and dplyr, 
+# which we can use for dataframe manipulation.
+
+list_of_matrices_with_deg_id <- 
+  lapply(1:nord, 
+         function(poly_degree){cbind(predictions_list[[poly_degree]], 
+                                     simulation_num = 1:M, poly_degree)}
+         )
+# Now predictions_list is a list with 20 entries, where each entry is a matrix 
+# with 100 rows, where each row is the predicted polynomial of that degree.
+# We also have a column for the simulation number, and a column for polynomial degree.
+
+# Extract each matrix and bind them to one large matrix
+stacked_matrices <-  NULL
+for (i in 1:nord) {
+  stacked_matrices <-
+    rbind(stacked_matrices, list_of_matrices_with_deg_id[[i]])
+}
+stacked_matrices_df <- as.data.frame(stacked_matrices)
+
+# Convert from wide to long (because that is the best format for ggplot2)
+long_predictions_df <- pivot_longer(stacked_matrices_df, 
+                                    !c(simulation_num, poly_degree), 
+                                    values_to = "y")
+
+# Now we can use ggplot2!
+# We just want to plot for degrees 1, 2, 10 and 20.
+
+plotting_df <- cbind(long_predictions_df, x = x) %>% # adding the x-vector to the dataframe
+  filter(poly_degree %in% c(1, 2, 10, 20)) # Select only the predictions using degree 1, 2, 10 or 20
+
+ggplot(plotting_df, aes(x = x, y = y, group = simulation_num)) +
+  geom_line(aes(color = simulation_num)) +
+  geom_line(aes(x = x, y = x^2), size = 1.5) +
+  facet_wrap(~ poly_degree) +
+  theme_bw() +
+  theme(legend.position = "none")
+```
+
+
+
+```{r}
+set.seed(2)  # to reproduce
+M <- 100  # repeated samplings,x fixed but new errors
+nord <- 20
+
+x <- seq(from = -2, to = 4, by = 0.1)
+truefunc <- function(x) {
+    return(x^2)
+}
+true_y <- truefunc(x)
+error <- matrix(rnorm(length(x) * M, mean = 0, sd = 2), nrow = M, byrow = TRUE)
+testerror <- matrix(rnorm(length(x) * M, mean = 0, sd = 2), nrow = M,
+    byrow = TRUE)
+ymat <- matrix(rep(true_y, M), byrow = T, nrow = M) + error
+testymat <- matrix(rep(true_y, M), byrow = T, nrow = M) + testerror
+
+predictions_list <- lapply(1:nord, matrix, data = NA, nrow = M, ncol = ncol(ymat))
+for (i in 1:nord) {
+    for (j in 1:M) {
+        predictions_list[[i]][j, ] <- predict(lm(ymat[j, ] ~ poly(x,
+            i, raw = TRUE)))
+    }
+}
+
+trainMSE <- lapply(1:nord, function(poly_degree) {
+    rowMeans((predictions_list[[poly_degree]] - ymat)^2)
+})
+testMSE <- lapply(1:nord, function(poly_degree) {
+    rowMeans((predictions_list[[poly_degree]] - testymat)^2)
+})
+
+library(tidyverse)  # The tidyverse contains ggplot2, as well as tidyr and dplyr, 
+# which we can use for dataframe manipulation.
+
+# Convert each matrix in the list form wide to long (because that
+# is the best format for ggplot2)
+list_train_MSE <- lapply(1:nord, function(poly_degree) cbind(error = trainMSE[[poly_degree]],
+    poly_degree, error_type = "train", simulation_num = 1:M))
+list_test_MSE <- lapply(1:nord, function(poly_degree) cbind(error = testMSE[[poly_degree]],
+    poly_degree, error_type = "test", simulation_num = 1:M))
+
+# Now predictions_list is a list with 20 entries, where each entry
+# is a matrix with 100 rows, where each row is the predicted
+# polynomial of that degree.
+
+stacked_train <- NULL
+for (i in 1:nord) {
+    stacked_train <- rbind(stacked_train, list_train_MSE[[i]])
+}
+stacked_test <- NULL
+for (i in 1:nord) {
+    stacked_test <- rbind(stacked_test, list_test_MSE[[i]])
+}
+
+stacked_errors_df <- as.data.frame(rbind(stacked_train, stacked_test))
+# This is already on long format.
+stacked_errors_df$error <- as.numeric(stacked_errors_df$error)
+stacked_errors_df$simulation_num <- as.integer(stacked_errors_df$simulation_num)
+stacked_errors_df$poly_degree <- as.integer(stacked_errors_df$poly_degree)
+
+p.all_lines <- ggplot(data = stacked_errors_df, aes(x = poly_degree,
+    y = error, group = simulation_num)) + geom_line(aes(color = simulation_num)) +
+    facet_wrap(~error_type) + xlab("Polynomial degree") + ylab("MSE") +
+    theme_bw() + theme(legend.position = "none")
+
+p.bars <- ggplot(stacked_errors_df, aes(x = as.factor(poly_degree), y = error)) +
+    geom_boxplot(aes(fill = error_type)) + scale_fill_discrete(name = "Error type") +
+    xlab("Polynomial degree") + ylab("MSE") + theme_bw()
+
+# Here we find the average test error and training error across the
+# repeated simulations.  The symbol '%>%' is called a pipe, and
+# comes from the tidyverse packages, which provide convenient
+# functions for working with data frames.
+means_across_simulations <- stacked_errors_df %>%
+    group_by(error_type, poly_degree) %>%
+    summarise(mean = mean(error))
+
+p.means <- ggplot(means_across_simulations, aes(x = poly_degree, y = mean)) +
+    geom_line(aes(color = error_type)) + scale_color_discrete(name = "Error type") +
+    xlab("Polynomial degree") + ylab("MSE") + theme_bw()
+
+library(patchwork)  # The library patchwork is the best way of combining ggplot2 objects. 
+# You could also use the function ggarrange from the ggpubr
+# package.
+
+p.all_lines/(p.bars + p.means)
+```
+

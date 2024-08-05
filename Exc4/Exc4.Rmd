@@ -1,0 +1,325 @@
+---
+title: "Exc4"
+author: "Henrik Sausen"
+date: "2023-05-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+Sys.setenv(RGL_USE_NULL=TRUE)
+library(matlib)
+require(MASS)
+```
+
+
+#Problem 2
+
+a)
+
+```{r}
+sigma_G = matrix(c(0.1502, 0.0055, 0.0055, 0.1998), 2)
+sigma_F = matrix(c(0.1240, 0.0116, 0.0116, 0.3112), 2)
+
+mu_G = c(214.97, 141.52)
+mu_F = c(214.82, 139.45)
+
+pi = 0.5
+
+n_F = 500 
+n_G = 500
+K = 2
+
+sigma_pooled = ((n_F - 1)*sigma_F + (n_G - 1)*sigma_G)/(n_F+n_G-K)
+
+```
+
+b)
+
+In LDA we have the following assumptions: Each class k has a normal conditional distribution, and that all classes has the same standard derviation $\simga$ and that the probabilities of being in class k sums to one. We classify the new observation $x_0$ to the class with highest discriminant score, $\delta_k(x)$, e.g.: 
+$max_{k \in {1,2}} \delta_k(x_0)$
+
+Classification rule of a new observation: Since we want to use LDA; we have to assume that $\Sigma$ is the same for both classes F and G. Hence, we use the pooled version of $\Sigma$ calculated above. In addition, we assume $\pi_F=\pi_G = 500/1000 = 0.5$ since our sets of data are equally sized. Thereby, we calculate the decition scores, and choose the highest.
+
+```{r}
+delta_LDA <- function(x, mu, sigma, pi) {
+  return(t(x) %*% solve(sigma) %*% mu - 0.5 %*% t(mu) %*% solve(sigma) %*% mu + I(log(pi)))
+} 
+
+x_0 <- c(214,140) #new observation 
+
+delta_F <- delta_LDA(x_0, mu_F, sigma_pooled, pi)
+delta_G <- delta_LDA(x_0, mu_G, sigma_pooled, pi)
+
+
+if(delta_F > delta_G) {
+  print("classification: F")
+} else {
+  print("classification: G")
+}
+
+```
+
+
+c) 
+
+Difference between QDA and LDA: 
+In QDA we do not assumer $\Sigma$ equal for all observations, we allow for different $\Sigma_k$ for the different classes $k$. We still assume normal distributions, such that an observation $X$ from class k is $X \text{~} N(\mu_k, \Sigma_k)$.
+
+QDA classification rule:
+```{r}
+delta_QDA <- function(x, mu, sigma, pi) {
+  
+return(-0.5 %*% t(x) %*% solve(sigma) %*% x + t(x) %*% solve(sigma) %*% mu - 0.5 %*% t(mu) %*% solve(sigma) %*% mu - 0.5 * I(log(det(sigma))) + I(log(pi)))
+
+}
+
+delta_F2 <- delta_QDA(x_0, mu_F, sigma_F, pi)
+delta_G2 <- delta_QDA(x_0, mu_G, sigma_G, pi)
+
+if(delta_F2 > delta_G2) {
+  print("classification: Fake")
+} else {
+  print("classification: Genuine")
+}
+```
+
+
+#Problem 3: Odds
+
+a) 
+Have that odds are given by $p_i/(1-p_i) = e^{\beta_0}e^{\beta_1x_{i1}}...e^{\beta_px_{ip}}$
+
+```{r}
+odds = 0.37
+
+p <- odds/(odds+1)
+```
+
+
+#Problem 4: Log. reg
+
+```{r}
+beta_0 = -6   #intercept
+beta_1 = 0.05 #hours studied
+beta_2 = 1    #undergrad gpa 
+
+x1 = c(1, 40, 3.5) #studies 40h, 3.5 in gpa
+
+odds_x1 <- I(exp(beta_0+beta_1*x1[2]+beta_2*x1[3]))
+
+
+#prob that x1 get an A
+p_x1 = odds_x1/(1+odds_x1)
+p_x1
+
+#hours need to study to have 50% chance of A: Need to express the odds ratio wrt xi[2]
+
+```
+
+
+
+#Problem 5
+
+a) 
+If p(x) > 0.5, then we classify as diseased. True number of deceased: P, true number of non-deceased N. The number of observations with p(x) > 0.5 are denoted P* and number of obs p(x) < 0.5 denoted as N*.
+
+Specificity = (Number of true negative test) / (Number of actual negative). Sensitivity = (Number of true positive test) / (Number of actual positive)
+
+b) ROC curves: plot sensitivity against 1-specificity. In order to get a ROC curve, we use different thresholds p(x). Want the area under the curve as close to 1 as possible. We want to look at different thresholds because you want to find the best threshold for your model. 
+
+c) AUC: area under ROC curve. Would prefer the model with highest AUC. AUC gives an overall performance evalutation for all thresholds. If AUC is below 0.5, the model does not classify better than chance. 
+
+# Problem 6
+
+a) 
+```{r}
+library(ISLR)
+data("Weekly")
+
+summary(Weekly)
+```
+
+
+```{r}
+#investigate the data
+library(GGally)
+library(ggplot2)
+
+
+ggpairs(Weekly, aes(color = Direction), lower = list(continuous = wrap("points", size = 0.1))) +
+  theme_minimal()
+```
+
+From the plot above, we see that year and volume are highly correlated variables, as there is a true relationship between them. Despite this, there looks to be no other pattern. 
+ 
+b) Logistic regression 
+
+We cut out the year-variable. Use the full dataset: 
+
+```{r}
+model.logreg <- glm(Direction ~ Lag1 + Lag2 + Lag3 + Lag4 + Lag5 + Volume, data = Weekly, family = binomial)
+
+summary(model.logreg)
+```
+Looking at the summary, we see that the Lag2 and intercept are below the 0.05 threshold on the p-value. This means that there are some evidence that these two variables are significant in the model. However, the p-value could be small by chance, so we need more evidence. 
+
+c) Confusion matrix. This matrix tells us about the type I and type II error. 
+
+```{r}
+glm.probs_Weekly = predict(model.logreg, type = "response")
+glm.preds_Weekly = ifelse(glm.probs_Weekly > 0.5, "Up", "Down")
+table(glm.preds_Weekly, Weekly$Direction)
+```
+
+Here we see that the number of correct prediction is 54+557. Rows: real, Columns: predicted. Moreover, the fraction of correct classifications is:
+
+```{r}
+correct_down = 43/(54+430)
+correct_up = (557)/(557+48)
+correct = (54+557)/(54+48+430+557)
+
+correct_down
+correct_up
+correct
+```
+The misclassification rate of down-prediction is quite high, and the model barley predicts better than chance. However, for a stock marked prediction, this is actually good. 
+
+d) Now we use the years from 1990 to 2008 as training data, with only lag2 as predictor. We are going to make a prediction. 
+
+```{r}
+Weekly_trainID = (Weekly$Year < 2009) #True for all years before 2009. False else.
+Weekly_train = Weekly[Weekly_trainID, ]
+Weekly_test = Weekly[!Weekly_trainID, ]
+
+```
+
+
+
+```{r}
+model2.train <- glm(Direction ~ Lag2, data = Weekly_train, family = binomial)
+predict.prob <- predict(model2.train, newdata = Weekly_test, type = "response") #gives out probabilities for up/down (because of the type = response) 
+
+model2.predict <- ifelse(predict.prob > 0.5, "Up", "Down")
+
+#confusion matrix
+
+table(model2.predict, Weekly_test$Direction)
+```
+
+We have the following fraction of correct predictions:
+```{r}
+correct_pred <- (9+56)/(9+5+34+56)
+
+correct_pred
+
+```
+
+
+e) Now prediction using LDA
+
+```{r} 
+#lda from MASS
+lda.train <- lda(Direction ~ Lag2, data = Weekly_train)
+
+lda.prob <- predict(lda.train, newdata = Weekly_test)$posterior #posterior contains probabilities, in two columns "up"and "down".
+
+lda.pred <-  predict(lda.train, newdata = Weekly_test)$class #containts up/down predictions 
+
+table(lda.pred, Weekly_test$Direction)
+```
+
+```{r}
+lda_correct <- (9+56)/(9+5+34+56)
+lda_correct 
+```
+ The correct prediction rate is the same as for logistic regression. 
+ 
+ f) QDA 
+ 
+```{r}
+qda.Weekly = qda(Direction ~ Lag2, data = Weekly_train)
+qda.Weekly_pred = predict(qda.Weekly, newdata = Weekly_test)$class
+qda.Weekly_prob = predict(qda.Weekly, newdata = Weekly_test)$posterior
+table(qda.Weekly_pred, Weekly_test$Direction)
+```
+ 
+Here we have no correct Down-predictions, hence 100% false error rate for Down-predictions. Not very informative. 
+
+```{r}
+qda.correct <- (61)/(43+61)
+qda.correct
+```
+
+The overall performance i not quite as good as for qda as for log.reg and lda. 
+
+
+g) KNN with K = 1
+
+```{r}
+library(class)
+knn.train = as.matrix(Weekly_train$Lag2) #contains matrix with the predictors we wish to use 
+knn.test = as.matrix(Weekly_test$Lag2)
+
+set.seed(123)
+KNN = knn(train = knn.train, test = knn.test, cl = Weekly_train$Direction, k = 1, prob = 0.5) #cl vector of training observations of response 
+table(KNN, Weekly_test$Direction)
+```
+
+
+
+h) Finding the best value of K 
+```{r}
+# knn error:
+K = 30
+knn.error = rep(NA, K)
+
+set.seed(234) #will be different because when there are equally many of each class for the respective value of k, the selection is done randomly between the two classes. 
+for (k in 1:K) {
+    knn.pred = knn(train = knn.train, test = knn.test, cl = Weekly_train$Direction, k = k)
+    knn.error[k] = mean(knn.pred != Weekly_test$Direction)
+}
+knn.error.df = data.frame(k = 1:K, error = knn.error)
+ggplot(knn.error.df, aes(x = k, y = error)) + geom_point(col = "blue") + geom_line(linetype = "dotted")
+```
+Seems like K = 12 is the optimal value of K. 
+
+```{r}
+KNN2 <- knn(train = knn.train, test = knn.test, cl = Weekly_train$Direction, k = 12, prob = 0.5) #cl vector of training observations of response 
+table(KNN2, Weekly_test$Direction)
+```
+
+```{r}
+KNN2.correct <- (19+43)/(19+18+24+43)
+KNN2.correct
+```
+Still not as good as LDA and log.reg, which seems to be the best choices. 
+
+j) ROC and AUC for all methods
+
+```{r}
+# get the probabilities for the classified class
+KNN_prob = attributes(KNN2)$prob
+
+# since we want the probability for Up, we need to take 1-p for the elements that gives probability for Down
+down = which(KNN2 == "Down")
+KNN_prob[down] = 1 - KNN_prob[down]
+
+# install.packages('plotROC') install.packages('pROC')
+library(pROC)
+library(plotROC)
+
+ROC_KNN = roc(response = Weekly_test$Direction, predictor = KNN_prob, direction = "<", plot = TRUE, print.auc = TRUE)
+ROC_logreg = roc(response = Weekly_test$Direction, predictor = predict.prob, direction = "<", plot = TRUE, print.auc = TRUE)
+ROC_LDA = roc(response = Weekly_test$Direction, predictor = lda.prob[,2], direction = "<", plot = TRUE, print.auc = TRUE)
+ROC_QDA = roc(response = Weekly_test$Direction, predictor = qda.Weekly_prob[,2], direction = "<", plot = TRUE, print.auc = TRUE)
+
+
+```
+
+
+
+```{r}
+
+```
+
